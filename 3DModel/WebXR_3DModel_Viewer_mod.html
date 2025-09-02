@@ -1,0 +1,299 @@
+<!--
+　数字キーの押下で、3DモデルをLOADして表示。
+　　1:OBJ
+　　2:GLTF
+---->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/",
+          "webxr-polyfill": "https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.module.js"
+        }
+      }
+    </script>
+
+    <script type="module">
+
+      // キーボード入力を処理するクラス
+      class InputHandler {
+        constructor() {
+          this.keys = {};
+          document.addEventListener('keydown', (event) => {
+            this.keys[event.key] = true;
+          });
+          document.addEventListener('keyup', (event) => {
+            this.keys[event.key] = false;
+          });
+        }
+        // キーが押されているか？
+        isKeyPressed(key) {
+          return this.keys[key];
+        }
+      }
+      const inputHandler = new InputHandler();
+      var loadedModel = 0;
+      var model;
+
+      // three.jsの読み込み
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+      import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+
+      // WebVRの判定、遷移ボタンのスクリプト
+      import { VRButton } from "three/addons/webxr/VRButton.js";
+
+      // WebXRのポリフィルを読み込み
+      import WebXRPolyfill from "webxr-polyfill";
+
+      // WebXRのポリフィルを有効にする
+      const polyfill = new WebXRPolyfill();
+
+      // サイズを指定
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      // レンダラーを作成
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+      });
+      renderer.setSize(width, height);
+
+      // レンダラーのWebVR設定を有効にする
+      console.log(renderer);
+      renderer.xr.enabled = true;
+
+      document.body.appendChild(renderer.domElement);
+
+      // WebVRの開始ボタンをDOMに追加
+      document.body.appendChild(VRButton.createButton(renderer));
+
+      // シーンを作成
+      const scene = new THREE.Scene();
+
+      // カメラを作成
+      const camera = new THREE.PerspectiveCamera(90, width / height);
+
+      // カメラ用コンテナを作成
+      const cameraContainer = new THREE.Object3D();
+      cameraContainer.add(camera);
+      scene.add(cameraContainer);
+
+      // 光源を作成
+      {
+        const spotLight = new THREE.SpotLight(
+          0xffffff,
+          4,
+          2000,
+          Math.PI / 5,
+          0.2,
+          1.5
+        );
+        spotLight.position.set(500, 300, 500);
+        scene.add(spotLight);
+
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+      }
+
+      const boxList = [];
+      // 立方体を作成
+      {
+        // 立方体のジオメトリを作成
+        const geometry = new THREE.BoxGeometry(45, 45, 45);
+        // 立方体を複数作成しランダムに配置
+        const num = 60;
+        loop: for (let i = 0; i < num; i++) {
+          const px = Math.round((Math.random() - 0.5) * 19) * 50 + 25;
+          const pz = Math.round((Math.random() - 0.5) * 19) * 50 + 25;
+          for (let j = 0; j < i; j++) {
+            const box2 = boxList[j];
+            if (box2.position.x === px && box2.position.z === pz) {
+              i -= 1;
+              continue loop;
+            }
+          }
+          // 立方体のマテリアルを作成
+          const material = new THREE.MeshStandardMaterial({
+            color: 0x1000000 * Math.random(),
+            roughness: 0.1,
+            metalness: 0.5,
+          });
+          const box = new THREE.Mesh(geometry, material);
+          box.position.x = px;
+          box.position.y = 25;
+          box.position.z = pz;
+          scene.add(box);
+          boxList.push(box);
+        }
+      }
+
+      // ショーケース作成
+      var showcase;
+      {
+        const showcaseGeometry = new THREE.BoxGeometry(0.5, 0.05, 0.5);
+        const showcaseMaterial = new THREE.MeshStandardMaterial({
+          color: 0x888888,
+          roughness: 0.1,
+          metalness: 0.5,
+        });
+        showcase = new THREE.Mesh(showcaseGeometry, showcaseMaterial);
+        scene.add(showcase);
+        showcase.position.set(0, 0.5, -1);
+      }
+      {
+        loadOBJ();
+        loadedModel = 1;
+      }
+
+
+      // レンダラーにループ関数を登録
+      renderer.setAnimationLoop(tick);
+
+      let time = 0;
+
+      // 毎フレーム時に実行されるループイベント////////////////////////////////////////////
+      function tick() {
+        time += 1;
+        showcase.rotation.y += 0.005;
+
+        if (inputHandler.isKeyPressed('r') == true) {
+//          var pos = cameraContainer.position;
+            var pos = camera.position;
+          showcase.position.set(pos.x, pos.y-0.5, pos.z-0.7);
+        }
+
+        if (inputHandler.isKeyPressed('1') == true && loadedModel != 1) {
+          loadOBJ();
+          loadedModel = 1;
+        }
+        if (inputHandler.isKeyPressed('2') == true && loadedModel != 2) {
+          loadGLTF();
+          loadedModel = 2;
+        }
+        if (inputHandler.isKeyPressed('3') == true && loadedModel != 3) {
+          loadGLTF2();
+          loadedModel = 3;
+        }
+        if (inputHandler.isKeyPressed('4') == true && loadedModel != 4) {
+          loadGLTF3();
+          loadedModel = 4;
+        }
+        if (inputHandler.isKeyPressed('5') == true && loadedModel != 5) {
+          loadGLTF4();
+          loadedModel = 5;
+        }
+
+
+        // 立方体を動かす
+        const length = boxList.length;
+        for (let i = 0; i < length; i++) {
+          boxList[i].position.y =
+            125 + 100 * Math.cos(time * 0.0005 * i + i / 10);
+        }
+
+        // レンダリング
+        renderer.render(scene, camera);
+      }
+
+      // リサイズ処理
+      window.addEventListener("resize", onResize);
+      function onResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      function loadGLTF() {
+        // GLTF形式のモデルデータを読込む /////////////////////////////////////////////////////////
+        showcase.remove(model);
+        const loader = new GLTFLoader();
+        loader.load("https://raw.githubusercontent.com/ics-creative/tutorial-three/refs/heads/main/samples/models/gltf/gltf/ToyCar.gltf",
+          function (gltf) {
+            model = gltf.scene;
+            model.scale.set(30,30,30);
+            showcase.add(model);
+          });
+      }
+      function loadGLTF3() {
+        // GLTF形式のモデルデータを読込む /////////////////////////////////////////////////////////
+        showcase.remove(model);
+        const loader = new GLTFLoader();
+        loader.load("models/kimono_girl.glb",
+          function (gltf) {
+            model = gltf.scene;
+            model.scale.set(0.02,0.02,0.02);
+            showcase.add(model);
+          });
+      }
+      function loadGLTF4() {
+        // GLTF形式のモデルデータを読込む /////////////////////////////////////////////////////////
+        showcase.remove(model);
+        const loader = new GLTFLoader();
+        loader.load("models/teddybear_girl.glb",
+          function (gltf) {
+            model = gltf.scene;
+            model.scale.set(0.01,0.01,0.01);
+            showcase.add(model);
+          });
+      }
+
+      function loadGLTF2() {
+        // GLTF形式のモデルデータを読込む /////////////////////////////////////////////////////////
+        showcase.remove(model);
+		const dracoLoader = new DRACOLoader();
+		dracoLoader.setDecoderPath( "https://threejs.org/examples/jsm/libs/draco/gltf/");
+
+		const loader = new GLTFLoader();
+		loader.setDRACOLoader( dracoLoader );
+		loader.load( "https://threejs.org/examples/models/gltf/LittlestTokyo.glb", function ( gltf ) {
+			model = gltf.scene;
+			model.position.set( 0, 0.5, 0 );
+			model.scale.set( 0.002, 0.002, 0.002 );
+            showcase.add(model);
+		});
+      }
+
+
+      function loadOBJ() {
+        // OBJ形式のモデルデータを読込む /////////////////////////////////////////////////////////
+        {
+          showcase.remove(model);
+          const objTexture = new THREE.TextureLoader().load("https://cdn.glitch.global/b5b33153-0d50-4700-873a-aabd88afd6d7/sh_lowaTibetGT_albedo.jpg?v=1728372597856");
+          const objLoader = new OBJLoader();
+          objLoader.load(
+            "https://cdn.glitch.global/b5b33153-0d50-4700-873a-aabd88afd6d7/sh_lowaTibetGT.obj?v=1728372576266",
+//          "https://raw.githubusercontent.com/ekito-station/building-viewer-threejs/refs/heads/main/Building.obj",
+            function (obj) {
+              obj.traverse(function (child) {
+                if (child.isMesh) child.material.map = objTexture;
+              });
+              obj.scale.set(2,2,2);
+              showcase.add(obj);
+              obj.position.set(0, 0.2, 0);
+              model = obj;
+            },
+          );
+        }
+      }
+    
+    
+    </script>
+  </body>
+</html>

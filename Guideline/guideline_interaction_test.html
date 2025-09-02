@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Guideline Interaction Test</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; touch-action: none; cursor: grab; }
+  </style>
+</head>
+<body>
+  <div style="position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.8); padding: 8px; border-radius: 8px;">
+    <label><input type="radio" name="guideline" value="true" checked>推奨仕様1</label><br/>
+    <label><input type="radio" name="guideline" value="false">推奨仕様2</label>
+  </div>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+
+    let isGuideline1 = true;
+    
+    document.querySelectorAll('input[name="guideline"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+      isGuideline1 = (e.target.value === 'true');
+      console.log("isGuideline1:", isGuideline1); // デバッグ出力
+      });
+    });
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 5);
+
+    const renderer = new THREE.WebGLRenderer({antialias: true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    //3Dモデルを表示
+    const DirectionalLight = new THREE.DirectionalLight(0xFFFFFF, 1);
+    scene.add(DirectionalLight);
+    const ambientLight = new THREE.AmbientLight(0xFFFFFF, 1);
+    scene.add(ambientLight);
+    loadGLTF();
+    
+    //const geometry = new THREE.BoxGeometry();
+    //const material = new THREE.MeshNormalMaterial();
+    //const cube = new THREE.Mesh(geometry, material);
+    //scene.add(cube);
+    
+    //for debug (display target)
+    //const target_cube = new THREE.Mesh(geometry, material);
+    //scene.add(target_cube);
+    
+    let isAltDown = false;
+    let isShiftDown = false;
+    let isDragging = false;
+    let button = null;
+    let lastX = 0, lastY = 0;
+
+    const target = new THREE.Vector3(0, 0, 0);
+    //target_cube.position.copy(target);
+    let spherical = new THREE.Spherical();
+    spherical.setFromVector3(camera.position.clone().sub(target));
+
+    function updateCameraPositionFromOrbit() {
+      const offset = new THREE.Vector3().setFromSpherical(spherical).add(target);
+      camera.position.copy(offset);
+      camera.lookAt(target);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Alt') isAltDown = true;
+      if (e.key === 'Shift') isShiftDown = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Alt') isAltDown = false;
+      if (e.key === 'Shift') isShiftDown = false;
+    });
+
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      button = e.button;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+
+    renderer.domElement.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    renderer.domElement.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+
+      const panSpeed = 0.002 * spherical.radius;
+      let rotateCameraAround = false;
+
+      if (isAltDown) {
+        if (button === 0) {
+          // ALT+左ボタンで回転
+          spherical.theta -= dx * 0.005;
+          spherical.phi -= dy * 0.005;
+          spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+        } else if (button === 1) {
+          // ALT+中ボタンで並進
+          panCamera(dx, dy, panSpeed);
+        } else if (button === 2) {
+          // ALT+右ボタンで拡縮
+          spherical.radius += dy * 0.01;
+          spherical.radius = Math.max(0.1, spherical.radius);
+        }
+      } else {
+        if (isGuideline1) {//推奨１の挙動/////////
+          if (button === 1 && isShiftDown) {
+            // Blender風 SHIFT+中央ボタンで並進
+            panCamera(dx, dy, panSpeed);
+          } else if (button === 1) {
+            // Belnder風 +中央ボタンで回転
+　　         spherical.theta -= dx * 0.005;
+　　         spherical.phi -= dy * 0.005;
+            spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+          } else if (button === 0) {
+            // シンプルアプリ向け 左ボタンで並進
+            panCamera(dx, dy, panSpeed);
+          } else if (button === 2) {
+            // シンプルアプリ向け 右ボタンで回転
+　　         spherical.theta -= dx * 0.005;
+　　         spherical.phi -= dy * 0.005;
+            spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+          }
+        } else {//推奨2の挙動//////////////
+          if (button === 0) {
+            // シンプルアプリ向け 左ボタンで並進
+            panCamera(dx, dy, panSpeed);
+          } else if (button === 1) {
+            // Unity風 中央ボタンで並進
+            panCamera(dx, dy, panSpeed);
+          } else if (button === 2) {
+            // Unity風 右ボタンで回転(カメラ位置から周囲見る)
+            rotateCameraAroundSelf(-dx, -dy);
+            rotateCameraAround = true;
+          }
+        }
+      }
+
+      if(rotateCameraAround === false) updateCameraPositionFromOrbit();
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+
+    function panCamera(dx, dy, speed) {
+      const pan = new THREE.Vector3();
+      const matrix = new THREE.Matrix4().extractRotation(camera.matrix);
+      const xAxis = new THREE.Vector3(1, 0, 0).applyMatrix4(matrix);
+      const yAxis = new THREE.Vector3(0, 1, 0).applyMatrix4(matrix);
+      pan.add(xAxis.multiplyScalar(-dx * speed));
+      pan.add(yAxis.multiplyScalar(dy * speed));
+      target.add(pan);
+      //target_cube.position.copy(target);   
+    }
+
+    function rotateCameraAroundSelf(dx, dy) {
+      const qYaw = new THREE.Quaternion();   // Y軸周り（左右）
+      const qPitch = new THREE.Quaternion(); // X軸周り（上下）
+      qYaw.setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * 0.005);
+      qPitch.setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * 0.005);
+      camera.quaternion.multiply(qYaw);
+      camera.quaternion.premultiply(qPitch);
+      //視線方向にtargetを再配置
+      const direction = new THREE.Vector3();
+      camera.getWorldDirection(direction);
+      target.copy(camera.position).add(direction.multiplyScalar(spherical.radius));
+      //target_cube.position.copy(target);////
+      spherical.setFromVector3(camera.position.clone().sub(target));
+      camera.lookAt(target);
+    }
+
+    window.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const isTouchPad = ((Math.abs(e.deltaY) < 50) && (e.deltaMode === 0))||(e.deltaX != 0);
+      const isPinchGesture = e.ctrlKey && e.deltaMode === 0;//e.ctrlKey=trueはタッチパッド上でのピンチジェスチャを意味する。主要ブブラウザの仕様。
+
+      if (isPinchGesture) {
+        // ピンチ操作：ズーム処理
+        spherical.radius += e.deltaY * 0.005;
+        spherical.radius = Math.max(0.1, spherical.radius);
+      } else if (e.shiftKey && isTouchPad) {
+        // SHIFT + タッチパッド2点で並進 //タッチパッド上での初動によりXorYに移動制限される(ブラウザ仕様)
+        panCamera(-e.deltaX, -e.deltaY, 0.002 * spherical.radius);
+      } else if (isTouchPad) {
+        // タッチパッド2点で回転 //タッチパッド上での初動によりXorYに回転制限される(ブラウザ仕様)
+        spherical.theta += e.deltaX * 0.005;
+        spherical.phi += e.deltaY * 0.005;
+        spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+      } else {
+        // ホイールで拡縮
+        spherical.radius += e.deltaY * 0.001;
+        spherical.radius = Math.max(0.1, spherical.radius);
+      }
+      updateCameraPositionFromOrbit();
+    }, { passive: false });
+
+    window.addEventListener('contextmenu', e => e.preventDefault());
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // タッチパネル対応
+    let lastTouchDist = 0;
+    let lastTouchMid = null;
+    let lastSingleTouch = { x: 0, y: 0 };
+
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        lastSingleTouch.x = e.touches[0].clientX;
+        lastSingleTouch.y = e.touches[0].clientY;
+        lastTouchMid = null;
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+        lastTouchMid = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+      }
+    }, { passive: false });
+
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      
+      const panSpeed = 0.002 * spherical.radius;
+
+      if (e.touches.length === 1) {
+        if(lastTouchMid == null) {//1点タッチのみ処理。2点タッチから1点タッチになった場合は無視。
+　        const dx = e.touches[0].clientX - lastSingleTouch.x;
+　        const dy = e.touches[0].clientY - lastSingleTouch.y;
+        　// タッチ1点で回転
+　        spherical.theta -= dx * 0.005;
+　        spherical.phi -= dy * 0.005;
+　        spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+　        updateCameraPositionFromOrbit();
+　        lastSingleTouch.x = e.touches[0].clientX;
+　        lastSingleTouch.y = e.touches[0].clientY;
+        }
+      } else if (e.touches.length === 2) {
+        const newMid = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+        const dx = newMid.x - lastTouchMid.x;
+        const dy = newMid.y - lastTouchMid.y;
+        // 2点タッチで並進
+        panCamera(dx, dy, panSpeed);
+        lastTouchMid = newMid;
+
+        const dxTouch = e.touches[0].clientX - e.touches[1].clientX;
+        const dyTouch = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dxTouch * dxTouch + dyTouch * dyTouch);
+        const scale = dist / lastTouchDist;
+        spherical.radius /= scale;
+        spherical.radius = Math.max(0.1, spherical.radius);
+        lastTouchDist = dist;
+
+        updateCameraPositionFromOrbit();
+      }
+    }, { passive: false });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    
+    function loadGLTF() {
+      // GLTF形式のモデルデータを読込む /////////////////////////////////////////////////////////
+   		const dracoLoader = new DRACOLoader();
+		  dracoLoader.setDecoderPath( "https://threejs.org/examples/jsm/libs/draco/gltf/");
+　　　	const loader = new GLTFLoader();
+		  loader.setDRACOLoader( dracoLoader );
+		  loader.load( "https://threejs.org/examples/models/gltf/LittlestTokyo.glb", function ( gltf ) {
+	  　  let model = gltf.scene;
+  			model.position.set(0,0,0);
+  			model.scale.set(0.005, 0.005, 0.005);
+        scene.add(model);
+		  });
+    }
+    
+   
+    animate();
+  </script>
+</body>
+</html>

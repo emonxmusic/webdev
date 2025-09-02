@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>マルチタッチイベント表示</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+      background-color: #f0f0f0;
+    }
+    #log {
+      white-space: pre-wrap;
+      background: #fff;
+      padding: 1em;
+      border: 1px solid #ccc;
+      height: 400px;
+      overflow-y: scroll;
+    }
+  </style>
+</head>
+<body>
+  <h1>マウス・ホイール・マルチタッチイベント表示</h1>
+  <div id="log">イベントログがここに表示されます。</div>
+
+  <script>
+    const logDiv = document.getElementById('log');
+
+    function log(message) {
+      const time = new Date().toLocaleTimeString();
+      logDiv.textContent = `[${time}] ${message}\n` + logDiv.textContent;
+    }
+
+    // --- マウス＆ホイール ---
+    window.addEventListener('mousemove', e => log(`mousemove @ (${e.clientX}, ${e.clientY})`));
+    window.addEventListener('mousedown', e => log(`mousedown @ (${e.clientX}, ${e.clientY})`));
+    window.addEventListener('mouseup', e => log(`mouseup @ (${e.clientX}, ${e.clientY})`));
+    window.addEventListener('click', e => log(`click @ (${e.clientX}, ${e.clientY})`));
+    window.addEventListener('wheel', e => {
+      log(`wheel Δ(${e.deltaX.toFixed(2)}, ${e.deltaY.toFixed(2)}) @ (${e.clientX}, ${e.clientY})`);
+    }, { passive: true });
+
+    // --- タッチジェスチャーの準備 ---
+    let lastTouchDistance = null;
+    let lastTouchAngle = null;
+
+    function getDistance(t1, t2) {
+      return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    }
+
+    function getAngle(t1, t2) {
+      return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * (180 / Math.PI);
+    }
+
+    window.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        log(`touchstart @ (${t.clientX}, ${t.clientY})`);
+      } else if (e.touches.length === 2) {
+        lastTouchDistance = getDistance(e.touches[0], e.touches[1]);
+        lastTouchAngle = getAngle(e.touches[0], e.touches[1]);
+        log(`2本指開始`);
+      }
+    });
+
+    window.addEventListener('touchmove', e => {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        log(`touchmove @ (${t.clientX}, ${t.clientY})`);
+      } else if (e.touches.length === 2) {
+        const newDist = getDistance(e.touches[0], e.touches[1]);
+        const newAngle = getAngle(e.touches[0], e.touches[1]);
+
+        const scale = (newDist / lastTouchDistance).toFixed(2);
+        const rotation = (newAngle - lastTouchAngle).toFixed(2);
+
+        if (Math.abs(scale - 1) > 0.05) {
+          log(`ピンチ: 拡大率 ${scale}`);
+        }
+
+        if (Math.abs(rotation) > 5) {
+          log(`回転: ${rotation} 度`);
+        }
+
+        // 2本指スクロール（平均座標の移動）
+        const avgX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        log(`2本指スクロール位置: (${avgX.toFixed(1)}, ${avgY.toFixed(1)})`);
+
+        lastTouchDistance = newDist;
+        lastTouchAngle = newAngle;
+      }
+    });
+
+    window.addEventListener('touchend', e => {
+      log(`touchend（残り ${e.touches.length} 本）`);
+    });
+  </script>
+</body>
+</html>
